@@ -30,7 +30,9 @@ export class Docker {
     const [definition] = JSON.parse(await this.run(['image', 'inspect', image]));
     if (Object.keys(definition.Config.Volumes || {}).length) throw Error('Image-declared volumes are unsupported; require a stateless image');
     if (old) await this.run(['container', 'rm', s.name]);
-    const args = ['container', 'create', '--name', s.name, '--network', this.c.network,
+    // `create -i` sets StdinOnce=true in Docker CLI. Detached run explicitly
+    // clears it, keeping original-process stdin reusable after attach disconnect.
+    const args = ['container', ...(s.openStdin ? ['run', '--detach', '--pull', 'never'] : ['create']), '--name', s.name, '--network', this.c.network,
       '--restart', 'no', '--stop-signal', 'SIGTERM', '--label', `harbor-shift.group=${this.c.group}`,
       '--label', `harbor-shift.slot=${slot}`, '--memory', s.memory, '--cpus', String(s.cpus),
       '--security-opt', 'no-new-privileges', '--cap-drop', 'ALL'];
@@ -39,7 +41,7 @@ export class Docker {
     for (const p of s.publish) args.push('--publish', p);
     args.push(image);
     await this.run(args);
-    await this.run(['container', 'start', s.name]);
+    if (!s.openStdin) await this.run(['container', 'start', s.name]);
   }
   async stop(slot) {
     if (!(await this.inspect(slot))) return;

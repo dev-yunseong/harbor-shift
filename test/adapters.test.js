@@ -31,6 +31,15 @@ test('Docker stop explicitly requests TERM with configured kill deadline', async
   d.inspect = async () => ({ running: false }); await d.stop('blue');
   assert.deepEqual(calls[0].slice(2), ['container', 'stop', '--signal', 'SIGTERM', '--timeout', '30', 'demo-blue']);
 });
+test('open stdin uses detached run so Docker does not set StdinOnce', async () => {
+  const c = await config(); c.slots.green.openStdin = true; const calls = [];
+  const d = new Docker(c, async (_, args) => { calls.push(args); return { stdout: args.includes('image') ? '[{"Config":{"Volumes":{}}}]' : '' }; });
+  await d.prepare('green', `sha256:${'a'.repeat(64)}`);
+  const run = calls.find(args => args.includes('run'));
+  assert.ok(run.includes('--detach')); assert.ok(run.includes('--interactive'));
+  assert.equal(run[run.indexOf('--pull') + 1], 'never');
+  assert.equal(calls.some(args => args.includes('start')), false);
+});
 test('Docker refuses foreign ownership before mutation', async () => {
   const c = await config(); const d = new Docker(c, async (_, args) => ({ stdout: args.includes('ls') ? 'demo-blue' : JSON.stringify([{ Config: { Labels: {} } }]) }));
   await assert.rejects(d.inspect('blue'), /ownership/);
