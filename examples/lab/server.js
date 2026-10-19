@@ -21,7 +21,7 @@ const server = createServer(async (req, res) => {
       if (url.pathname === '/assign') return send(200, { active, url: `http://127.0.0.1:${active === 'blue' ? 9101 : 9102}/work?ms=15000` });
       return send(404, {});
     }
-    if (url.pathname === '/ready') return send(200, { ready: !draining });
+    if (url.pathname === '/ready') return send(200, { ready: !draining && process.env.UNHEALTHY !== '1' });
     if (url.pathname === '/drain' && req.method === 'POST') { draining = true; return send(200, { draining }); }
     if (url.pathname === '/status') return send(200, { draining, sessions });
     if (url.pathname === '/work') {

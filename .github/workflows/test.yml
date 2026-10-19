@@ -16,3 +16,15 @@ jobs:
       - run: npm test
       - run: npm run demo
       - run: node src/cli.js plan examples/config.json
+  docker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Isolated Docker lifecycle
+        env:
+          HARBOR_DOCKER_TEST: '1'
+        run: node --test integration/docker.test.js
