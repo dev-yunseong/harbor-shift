@@ -3,56 +3,47 @@
 # Harbor Shift
 **New containers take new work. Old containers finish what they started.**
 
-Blue-green container updates with readiness checks, controlled admission, and bounded graceful shutdown.
+Automatic blue-green Docker updates with a bundled HTTP/WebSocket proxy and configurable graceful shutdown.
 
-[Quickstart](#quickstart) · [Integration contract](docs/integration.md) · [Operations](docs/operations.md) · [Contributing](CONTRIBUTING.md)
+[Quickstart](#quickstart) · [Configuration](docs/proxy.md) · [Shutdown hooks](docs/shutdown.md) · [Advanced mode](docs/integration.md)
 
 </div>
 
-Harbor Shift watches a Docker image, starts the inactive slot, checks readiness, switches new work, and drains the previous slot. Failed readiness leaves the active slot alone. Switch or early health failures trigger rollback. Uncertain outcomes stop automation for operator review.
-
-**Status:** early implementation; unit and local HTTP tests pass. Docker integration has not yet been exercised on a real engine. Validate in a disposable environment before production.
+Run one updater container, opt in one service through configuration, and send traffic through its proxy. Harbor Shift watches the image, starts a ready replacement, switches new requests, and lets old requests and WebSockets finish. **No custom controller required.**
 
 ## Quickstart
 
-Requires Node.js 24+. The demo needs no Docker or credentials.
+Requires Linux Docker Engine and Compose. This starts an example web service on localhost; it publishes no images or packages.
 
 ```sh
 git clone https://github.com/dev-yunseong/harbor-shift.git
 cd harbor-shift
-npm test
-npm run demo
-node src/cli.js plan examples/config.json
+docker compose up --build -d
+curl http://localhost:8080
 ```
 
-For real use, configure two dedicated slots and implement the small [admission API](docs/integration.md) in your lobby/router. Edit the example's image, Docker context, network, endpoints, and resource limits. Supply its bearer token through `HARBOR_TOKEN` using your secret manager.
+Before first start, edit [`examples/proxy/service.json`](examples/proxy/service.json) for your image, internal port and readiness path. The updater manages both app slots itself and checks the configured image tag every minute. [Configuration and recovery →](docs/proxy.md)
 
-```sh
-# Preview only; no registry, Docker or HTTP calls
-node src/cli.js once path/to/config.json
+Optional graceful shutdown hook:
 
-# Explicitly enable changes
-node src/cli.js once path/to/config.json --apply
-node src/cli.js watch path/to/config.json --apply
+```json
+"shutdown": {
+  "initiate": { "type": "exec", "argv": ["/app/drain"], "timeoutMs": 5000 },
+  "completion": { "type": "proxy" },
+  "onFailure": "keep-old"
+}
 ```
 
-| Capability | Behavior |
-|---|---|
-| Updates | Pull configured image; deploy its immutable local image ID only when changed |
-| Readiness | Strict JSON readiness check before admission switch |
-| Draining | Stop new assignments; wait for application session count to reach zero |
-| Deadline | On drain timeout, SIGTERM followed by Docker's bounded SIGKILL escalation |
-| Failure | Roll back before old-slot drain; retain journal on uncertain outcomes |
-| Safety | Dry-run default, exclusive lock, explicit ownership labels, no automatic retry after failure |
+Choose **container exec, HTTP, or original-process stdin**. Without a hook, the proxy waits for old requests/tunnels, then sends SIGTERM. Drain deadlines lead to bounded SIGKILL escalation. [Hook examples →](docs/shutdown.md)
 
 ## Know the boundaries
 
-- **Requires application cooperation.** Docker Engine plus the documented HTTP admission protocol is supported. This is not a drop-in adapter for Nginx, arbitrary Compose stacks, Kubernetes, or the reference application's current endpoints.
-- Existing WebSocket/game connections remain on the old slot. They can disconnect when the drain deadline expires. Clients need reconnect/resume behavior; this is not a zero-downtime guarantee.
-- Database migrations, shared volumes, background jobs, and message consumers need their own compatibility and ownership strategy.
-- One writer per service and Docker daemon, one shared local state directory, enough capacity for both slots. No distributed lock or automatic crash recovery.
-- Docker access grants powerful host control. Keep management endpoints private, use TLS outside a trusted local network, and read [security guidance](SECURITY.md).
+- Readiness gates, early rollback, exclusive locking, and an uncertainty journal. Failed updates pause polling while the proxy keeps serving its current route.
+- Existing WebSockets stay on their original container. Deadlines, app failures, or restarting the proxy can still disconnect them; this is not a zero-downtime guarantee.
+- One explicitly configured **stateless HTTP/1.1 or WebSocket service** per updater. No direct app host ports, shared writable volumes, arbitrary protocols, or automatic Compose-container adoption. Terminate TLS in front.
+- Background work and database migrations need application coordination. Use application completion hooks when proxy counts are insufficient.
+- **Docker socket access is host-root-equivalent.** Keep it private and run trusted images. [Security →](SECURITY.md)
 
-[Configuration and API](docs/integration.md) · [Lifecycle and recovery](docs/operations.md) · [Disposable Docker lab](examples/lab/README.md) · [Provenance](docs/provenance.md)
+Game lobbies can use the optional [custom admission adapter](docs/integration.md).
 
-MIT licensed original implementation. The separately owned reference infrastructure is not included or relicensed.
+[Tests & contributing](CONTRIBUTING.md) · [Recovery](docs/operations.md) · [Provenance](docs/provenance.md) · [MIT license](LICENSE)

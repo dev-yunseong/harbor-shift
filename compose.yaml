@@ -1,0 +1,18 @@
+services:
+  harbor-shift:
+    build: .
+    command: ["/config/service.json", "--apply"]
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./examples/proxy/service.json:/config/service.json:ro
+      - harbor-state:/state
+    networks: [harbor]
+    # Avoid an automatic retry loop after an uncertain deployment.
+    restart: "no"
+    stop_grace_period: 7m
+networks:
+  harbor:
+    name: harbor-demo
+volumes:
+  harbor-state:

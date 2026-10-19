@@ -5,6 +5,7 @@ import { Admission } from './http.js';
 import { Store } from './store.js';
 import { Deployer } from './deploy.js';
 import { watch } from './watch.js';
+import { ShutdownAdmission } from './shutdown.js';
 
 const [command, file, ...flags] = process.argv.slice(2);
 if (!['plan', 'once', 'watch'].includes(command) || !file || flags.some(f => f !== '--apply') || (command === 'plan' && flags.length)) {
@@ -15,7 +16,8 @@ if (!['plan', 'once', 'watch'].includes(command) || !file || flags.some(f => f !
     if (command === 'watch' && !apply) throw Error('watch requires --apply; use plan for a dry run');
     const token = process.env[c.tokenEnv];
     if (apply && !token) throw Error('Configured token environment variable is missing');
-    const d = new Deployer(c, new Docker(c), new Admission(c, token), new Store(c.stateDir), { log: message => console.log(JSON.stringify({ event: message })) });
+    const runtime = new Docker(c);
+    const d = new Deployer(c, runtime, new ShutdownAdmission(new Admission(c, token), runtime, c), new Store(c.stateDir), { log: message => console.log(JSON.stringify({ event: message })) });
     const cancel = new AbortController();
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => cancel.abort());
     const run = async () => console.log(JSON.stringify(await d.run({ dryRun: !apply })));

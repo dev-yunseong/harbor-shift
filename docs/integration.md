@@ -1,4 +1,6 @@
-# Configuration and integration contract
+# Advanced: custom admission adapter
+
+Most HTTP/WebSocket services should use the [bundled proxy](proxy.md), which needs no custom controller. This document covers the optional game/lobby adapter. Commands remain `node src/cli.js <plan|once|watch> config.json [--apply]`.
 
 The checked-in JSON is a placeholder, not a production target. Paths are relative to the config file. Unknown fields fail validation. `plan` and `once` without `--apply` validate configuration but do not discover remote state or authenticate.
 
@@ -16,6 +18,9 @@ The checked-in JSON is a placeholder, not a production target. Paths are relativ
 | `envFile` | Optional private Docker env file; never commit it |
 | `publish` | Loopback TCP port mappings only; use a private network for remote management |
 | `memory`, `cpus` | Explicit resource caps for each slot |
+| `openStdin` | Optional per-slot boolean for stdin hooks |
+| `shutdown` | [Initiation/completion overrides](shutdown.md) |
+| `pullPolicy` | `always` (default), or `never` for local images |
 
 All timing fields are positive integer milliseconds except `stopSeconds`. `readyMs` bounds readiness polling, `stabilizeMs` observes the candidate after switching, `drainMs` bounds the session wait after drain acknowledgement, `pollMs` spaces probes, and `watchMs` separates completed deployments. Every HTTP call has `requestMs`; every Docker subprocess has `commandMs`, which must exceed shutdown grace. A lifecycle phase may exceed its polling window by an in-progress Docker command; these are bounded operations, not a hard end-to-end deadline. Watch exits on its first failure; supervisors must not blindly restart it in a tight loop.
 

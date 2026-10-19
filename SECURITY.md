@@ -8,4 +8,6 @@ Review images and tags before enabling polling; a compromised registry account c
 
 HTTP and Docker errors intentionally omit remote response bodies and subprocess output. Avoid logging application credentials during manual investigation. Config parser errors may identify field names; do not embed secrets in config. Never commit env files, registry configuration, real host inventories or logs.
 
+Shutdown hooks are trusted operator code/requests. They run only on explicitly configured, ownership-checked slots; never populate hook configuration from untrusted labels. Exec runs inside the app container, without implicit shell evaluation. Stdin uses original-process attachment and is limited to local Unix Docker sockets. Timeouts can leave uncertain remote side effects: keep the journal and reconcile. The optional force-stop policy trades preservation of in-flight work for termination; it is never the default.
+
 Report suspected vulnerabilities privately to the repository maintainer through an available private GitHub reporting channel. Do not attach credentials or exploit details to a public issue. There is no staffed security response SLA.

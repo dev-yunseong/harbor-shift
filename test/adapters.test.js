@@ -19,7 +19,7 @@ test('configuration rejects typos, insecure transport, and invalid deadlines', a
 });
 test('Docker create uses pinned image and explicit security/ownership flags without shell', async () => {
   const c = await config(), calls = [], image = `sha256:${'a'.repeat(64)}`;
-  const d = new Docker(c, async (binary, args, opts) => { calls.push({ binary, args, opts }); return { stdout: '' }; });
+  const d = new Docker(c, async (binary, args, opts) => { calls.push({ binary, args, opts }); return { stdout: args.includes('image') ? '[{"Config":{"Volumes":{}}}]' : '' }; });
   await d.prepare('green', image);
   const create = calls.find(x => x.args.includes('create'));
   assert.equal(create.args.at(-1), image); assert.ok(create.args.includes('harbor-shift.slot=green'));

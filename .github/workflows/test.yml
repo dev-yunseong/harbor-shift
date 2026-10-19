@@ -27,4 +27,4 @@ jobs:
       - name: Isolated Docker lifecycle
         env:
           HARBOR_DOCKER_TEST: '1'
-        run: node --test integration/docker.test.js
+        run: node --test --test-concurrency=1 integration/*.test.js

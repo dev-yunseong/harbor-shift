@@ -14,7 +14,7 @@ flowchart LR
 
 Unchanged images do nothing. Readiness failure stops only the candidate. Switch uncertainty and observation failure attempt to restore old-slot admission, then drain the candidate because it may have accepted sessions. That rollback can itself reach a drain deadline and disconnect candidate sessions. Rollback is traffic recovery, not data rollback.
 
-After old-slot drain begins there is no automatic rollback. Failed drain/status/stop leaves both slots and the journal for an operator; it never guesses which is safe to kill. A failed or timed-out Docker create/start retains the journal because the daemon may finish a request after its CLI exits. Successful completion or completed rollback clears the journal. Stopped containers remain for inspection and are replaced on the next deployment; images are not pruned.
+After old-slot drain begins there is no automatic rollback. Failed drain/status/stop preserves the journal and running slots for an operator, except when the operator explicitly selects the initiation-failure `force-stop` policy. A failed or timed-out Docker create/start retains the journal because the daemon may finish a request after its CLI exits. Successful completion or completed rollback clears the journal. Stopped containers remain for inspection and are replaced on the next deployment; images are not pruned.
 
 ## Interrupted runs
 
@@ -23,6 +23,8 @@ Local exclusive file creation serializes cooperative invocations. Use one local,
 SIGINT/SIGTERM asks the CLI to finish its current bounded deployment and stops watch polling; it does not interrupt halfway through a switch. A hard kill can leave a lock and journal. Nothing automatically deletes a stale lock or resumes a transaction.
 
 Recovery checklist:
+
+For bundled mode, the admission authority is its persisted `route.json`, not a separate HTTP controller. Stop the updater before manual reconciliation and expect existing proxy connections to close. Verify/update the persisted active slot and revision only after confirming the chosen container is healthy and the other is retired. Do not edit a live daemon's state. The checklist below describes the advanced controller equivalent.
 
 1. Stop all invocations and supervisors; confirm the recorded PID is not still active. Verify the intended Docker context and group.
 2. Read `transaction.json` (old/candidate/image/revision), inspect both labeled containers, and read the authoritative controller route. Check delayed Docker operations have finished.
@@ -40,8 +42,8 @@ Use backward-compatible expand/contract database changes across the overlap and 
 
 ## Validation status
 
-Automated tests cover no-op/dry-run, readiness failure, switch rejection/lost response, health rollback, rollback failure, drain deadline/failure, ownership rejection, serialized invocations, interrupted preparation, filesystem journal/locking, Docker argv construction, and a real loopback HTTP contract fixture. They do not establish Docker engine, production lobby, proxy, TLS, WebSocket, or power-loss correctness.
+Automated tests cover no-op/dry-run, readiness failure, switch rejection/lost response, health rollback, rollback failure, drain deadline/failure, ownership rejection, serialization, journaling, Docker argv, HTTP/WebSocket proxy retention, and shutdown transports. The advanced adapter's real Docker lifecycle passed on a disposable Linux GitHub runner in [run 39263350978](https://github.com/dev-yunseong/harbor-shift/actions/runs/39263350978): old work completed, new work used the replacement, old container retired, and an unhealthy update preserved the active service. No production services or registry publications were involved.
 
-Before release, run the disposable Docker lab on Linux, exercise real long-lived sessions, test SIGTERM and forced shutdown, and review admission convergence and crash recovery in your integration. No live services were used in initial development.
+The added bundled-updater Docker test is pending its first CI run. Before production, validate your own application, real long-lived sessions, TLS front end, deadline behavior, and crash recovery. The tests do not establish universal compatibility, HA, or power-loss guarantees.
 
 Docker stop escalation follows the [Docker CLI reference](https://docs.docker.com/reference/cli/docker/container/stop/). Creation flags follow [Docker run documentation](https://docs.docker.com/reference/cli/docker/container/run/).

@@ -24,7 +24,12 @@ export class Deployer {
     } while (this.now() < end);
   }
   async retire(slot) {
-    await this.admission.drain(slot); // Uncertain/failed drain must not force-kill a serving slot.
+    try { await this.admission.drain(slot); }
+    catch (e) {
+      if (this.c.shutdown?.onFailure !== 'force-stop') throw e;
+      this.log('drain_hook_failed: explicit force-stop policy; work may be lost');
+      await this.runtime.stop(slot); return true;
+    }
     const end = this.now() + this.c.timing.drainMs;
     let exhausted = true;
     while (this.now() < end) {

@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "group": "harbor-web",
+  "image": "traefik/whoami:v1.11",
+  "network": "harbor-demo",
+  "stateDir": "/state",
+  "appPort": 80,
+  "listenPort": 8080,
+  "readinessPath": "/",
+  "memory": "128m",
+  "cpus": 1,
+  "timing": { "watchMs": 60000, "drainMs": 300000 }
+}
