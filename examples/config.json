@@ -1,0 +1,15 @@
+{
+  "group": "demo",
+  "image": "example.invalid/team/app:stable",
+  "dockerContext": "default",
+  "network": "harbor-demo",
+  "stateDir": "../.state/demo",
+  "controller": "http://127.0.0.1:9090",
+  "tokenEnv": "HARBOR_TOKEN",
+  "allowHttp": true,
+  "slots": {
+    "blue": { "name": "demo-blue", "url": "http://127.0.0.1:9101", "publish": ["127.0.0.1:9101:8080"], "memory": "256m", "cpus": 1 },
+    "green": { "name": "demo-green", "url": "http://127.0.0.1:9102", "publish": ["127.0.0.1:9102:8080"], "memory": "256m", "cpus": 1 }
+  },
+  "timing": { "requestMs": 2000, "readyMs": 60000, "pollMs": 1000, "stabilizeMs": 10000, "drainMs": 300000, "stopSeconds": 30, "commandMs": 120000, "watchMs": 60000 }
+}

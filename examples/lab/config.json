@@ -1,0 +1,15 @@
+{
+  "group": "hs-lab",
+  "image": "localhost:5500/hs-lab:latest",
+  "dockerContext": "default",
+  "network": "hs-lab",
+  "stateDir": "../../.state/lab",
+  "controller": "http://127.0.0.1:9090",
+  "tokenEnv": "HARBOR_TOKEN",
+  "allowHttp": true,
+  "slots": {
+    "blue": { "name": "hs-lab-blue", "url": "http://127.0.0.1:9101", "envFile": "blue.env.example", "publish": ["127.0.0.1:9101:8080"], "memory": "128m", "cpus": 1 },
+    "green": { "name": "hs-lab-green", "url": "http://127.0.0.1:9102", "envFile": "green.env.example", "publish": ["127.0.0.1:9102:8080"], "memory": "128m", "cpus": 1 }
+  },
+  "timing": { "requestMs": 2000, "readyMs": 30000, "pollMs": 500, "stabilizeMs": 2000, "drainMs": 20000, "stopSeconds": 5, "commandMs": 120000, "watchMs": 10000 }
+}
