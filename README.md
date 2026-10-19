@@ -46,4 +46,6 @@ Choose **container exec, HTTP, or original-process stdin**. Without a hook, the 
 
 Game lobbies can use the optional [custom admission adapter](docs/integration.md).
 
+Verified with Linux/Windows tests and isolated real-Docker HTTP/WebSocket deployments. [Validation details →](docs/operations.md#validation-status)
+
 [Tests & contributing](CONTRIBUTING.md) · [Recovery](docs/operations.md) · [Provenance](docs/provenance.md) · [MIT license](LICENSE)

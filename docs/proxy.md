@@ -61,3 +61,5 @@ One updater, unique group, dedicated state volume, no competing Watchtower/Compo
 `node src/proxy-cli.js examples/proxy/service.json` is a no-side-effect plan. The image also defaults to dry-run; sample Compose explicitly supplies `--apply`.
 
 `npm test` runs local tests. On a disposable Linux Docker host only, `HARBOR_DOCKER_TEST=1 node --test --test-concurrency=1 integration/*.test.js` exercises uniquely named real containers with deadlines and ownership-checked cleanup. Images are built locally, never published. Private registry authentication is outside these tests.
+
+[Verified CI run](https://github.com/dev-yunseong/harbor-shift/actions/runs/39266244366): both real Docker scenarios passed, including the bundled updater's HTTP/WebSocket retention, stdin drain, graceful retirement, and unhealthy-update preservation. The run also passed 32 unit/fixture tests on Linux and Windows.
