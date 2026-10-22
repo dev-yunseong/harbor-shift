@@ -8,7 +8,7 @@ import { watch } from './watch.js';
 import { ShutdownAdmission } from './shutdown.js';
 
 export async function serve(config, { apply = false, signal = new AbortController().signal, log = console.log } = {}) {
-  if (!apply) return { status: 'plan', group: config.group, mode: 'bundled HTTP/WebSocket proxy', note: 'No Docker, HTTP or state mutation; --apply enables bootstrap, proxy and polling' };
+  if (!apply) return { status: 'plan', group: config.group, mode: 'bundled HTTP/WebSocket proxy', note: 'No container, HTTP or state mutation; Compose sources are normalized read-only; --apply enables deployment' };
   const store = new Store(config.stateDir), unlock = await store.lock();
   const proxy = new ProxyAdmission(config), runtime = new Docker(config);
   // One lock covers the complete daemon lifetime, including bootstrap and traffic serving.

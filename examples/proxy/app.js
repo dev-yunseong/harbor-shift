@@ -12,7 +12,7 @@ const server = createServer((req, res) => {
   const ms = Number(url.searchParams.get('ms') || 0);
   if (draining || !Number.isSafeInteger(ms) || ms < 0 || ms > 60000) { res.writeHead(503); res.end(); return; }
   work++;
-  setTimeout(() => { work--; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ version })); }, ms);
+  setTimeout(() => { work--; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ version, slot: process.env.SLOT || 'unset' })); }, ms);
 });
 server.on('upgrade', (req, socket) => {
   if (draining || req.headers.upgrade?.toLowerCase() !== 'websocket') { socket.destroy(); return; }
@@ -41,4 +41,4 @@ process.stdin.setEncoding('utf8');
 let input = '';
 process.stdin.on('data', text => { input += text; if (input.includes('drain\n')) { draining = true; console.log('stdin_drain_received'); input = ''; } });
 process.on('SIGTERM', () => { console.log('sigterm_received'); draining = true; server.close(() => process.exit(0)); });
-server.listen(8080, '0.0.0.0');
+server.listen(Number(process.env.APP_PORT || 8080), '0.0.0.0');

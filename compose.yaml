@@ -1,20 +1,11 @@
 services:
   harbor-shift:
     image: ghcr.io/dev-yunseong/harbor-shift:latest
-    command: ["--env", "--apply"]
-    environment:
-      HARBOR_ENABLED: "true"
-      HARBOR_GROUP: harbor-web
-      HARBOR_IMAGE: traefik/whoami:v1.11
-      HARBOR_NETWORK: harbor-demo
-      HARBOR_APP_PORT: "80"
-      HARBOR_READINESS_PATH: /
-      HARBOR_SHUTDOWN_MODE: docker
-      HARBOR_DRAIN_MS: "3600000"
-      HARBOR_STOP_SECONDS: "120"
+    command: ["/config/harbor.yml", "--apply"]
     ports: ["127.0.0.1:8080:8080"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/config:ro
       - harbor-state:/state
     networks: [harbor]
     restart: "no"

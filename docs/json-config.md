@@ -1,8 +1,8 @@
-# JSON 고급 설정
+# 기존 JSON 설정
 
 [빠른 시작으로 돌아가기](../README.md#빠른-시작)
 
-기본 사용 방법은 `docker run -e` 또는 Compose `environment`입니다. 이 문서는 exec/stdin hook이나 기존 JSON 설정을 유지할 때 참고하세요. 환경변수 모드와 JSON 모드는 서로 값을 덮어쓰지 않습니다. JSON 모드의 기본 drain 대기는 5분, SIGTERM 유예는 30초이며 환경변수 모드의 1시간 / 2분과 다릅니다.
+기본 사용 방법은 [YAML과 실행 정의](service-sources.md)입니다. 이 문서는 exec/stdin hook이나 기존 JSON 설정을 유지할 때 참고하세요. 환경변수 모드와 JSON 모드는 서로 값을 덮어쓰지 않습니다. JSON 모드의 기본 drain 대기는 5분, SIGTERM 유예는 30초이며 환경변수 모드의 1시간 / 2분과 다릅니다.
 
 
 복잡한 hook이나 기존 설정을 유지하려면 아래 내용을 `service.json`으로 저장해서 사용할 수 있습니다. 예제를 이미 실행했다면 기존 슬롯과 상태를 먼저 정리해야 합니다. [종료와 복구 절차](proxy.md#stop-and-recovery)를 참고하세요.

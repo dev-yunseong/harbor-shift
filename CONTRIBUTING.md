@@ -1,8 +1,9 @@
 # Contributing
 
-Use Node.js 24 or later. There are no runtime dependencies or install scripts.
+Use Node.js 24 or later. YAML parsing uses the locked yaml dependency; install scripts are not required.
 
 ```sh
+npm ci --ignore-scripts --no-audit --no-fund
 npm test
 npm run demo
 node src/cli.js plan examples/config.json

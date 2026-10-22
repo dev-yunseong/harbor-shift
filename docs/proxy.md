@@ -1,10 +1,10 @@
 # Bundled proxy mode
 
-The default Compose file configures the updater through environment variables and pulls the GHCR image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
+The default Compose file loads harbor.yml with docker run or Compose application definitions and pulls the GHCR image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
 
 ## Optional JSON configuration
 
-The default setup uses [environment variables](environment.md). The following schema is for explicit JSON configuration; see the [advanced guide](json-config.md).
+The default setup uses [YAML service sources](service-sources.md). The following schema is for explicit JSON configuration; see the [advanced guide](json-config.md).
 
 ```json
 {
@@ -23,9 +23,9 @@ The default setup uses [environment variables](environment.md). The following sc
 }
 ```
 
-The image supplies its command, entrypoint and user. Readiness requires exactly the configured status (default 200); redirects fail. Unknown config fields fail validation. The updater creates `<group>-blue/green` with ownership labels, resource caps, no-new-privileges, dropped capabilities, `restart=no`, and no host ports. Both slots and the updater must join the configured existing bridge network.
+The image supplies its command, entrypoint and user unless a supported source definition overrides them. Readiness requires exactly the configured status (default 200); redirects fail. Unknown config fields fail validation. The updater creates `<group>-blue/green` with ownership labels, resource caps, no-new-privileges, dropped capabilities, `restart=no`, and no host ports. Both slots and the updater must join the configured existing bridge network.
 
-Images declaring Docker volumes are rejected. Shared volumes, host networking, privileged mode, arbitrary Docker flags, command overrides, and Compose service cloning are unsupported. Use a stateless image and a non-root image USER.
+Images declaring Docker volumes are rejected. Shared volumes, host networking, privileged mode, arbitrary Docker flags, and arbitrary Docker flags are unsupported. Supported command overrides and selected Compose service imports are described in the source guide. Use a stateless image and a non-root image USER.
 
 | Additional option | Meaning |
 |---|---|

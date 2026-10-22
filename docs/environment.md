@@ -1,6 +1,8 @@
-# 환경변수 설정
+# 기존 환경변수 설정
 
-`node src/proxy-cli.js --env [--apply]` 또는 Docker 이미지의 `--env --apply` 인자로 사용합니다. `docker run -e`와 Compose `environment` 모두 같은 설정을 받습니다. JSON 파일 모드와 합쳐서 덮어쓰지 않으며, 알 수 없는 `HARBOR_*` 이름이나 잘못된 값은 컨테이너를 변경하기 전에 오류로 처리합니다. 인자를 생략한 이미지는 환경변수 모드의 dry-run입니다.
+기본 사용 방법은 [YAML과 실행 정의](service-sources.md)입니다. 이 문서는 기존 `--env` 모드 호환용입니다.
+
+`node src/proxy-cli.js --env [--apply]` 또는 Docker 이미지의 `--env --apply` 인자로 사용합니다. `docker run -e`와 Compose `environment` 모두 같은 설정을 받습니다. JSON 파일 모드와 합쳐서 덮어쓰지 않으며, 알 수 없는 `HARBOR_*` 이름이나 잘못된 값은 컨테이너를 변경하기 전에 오류로 처리합니다. 이미지의 기본 설정 경로는 `/config/harbor.yml`입니다. 환경변수 모드는 `--env`를 명시해야 합니다.
 
 ## 대상 앱과 프록시
 

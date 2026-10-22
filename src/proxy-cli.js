@@ -5,7 +5,7 @@ import { serve } from './serve.js';
 const [source, ...flags] = process.argv.slice(2);
 try {
   if (!source || (source.startsWith('--') && source !== '--env') || flags.some(f => f !== '--apply') || flags.length > 1) {
-    throw Error('Usage: node src/proxy-cli.js <config.json|--env> [--apply]');
+    throw Error('Usage: node src/proxy-cli.js <harbor.yml|config.json|--env> [--apply]');
   }
   const config = source === '--env' ? loadProxyEnv() : await loadProxyConfig(source);
   const cancel = new AbortController();

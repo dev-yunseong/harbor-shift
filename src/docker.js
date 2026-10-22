@@ -39,7 +39,20 @@ export class Docker {
     if (s.envFile) args.push('--env-file', s.envFile);
     if (s.openStdin) args.push('--interactive');
     for (const p of s.publish) args.push('--publish', p);
+    const container = s.container || {};
+    for (const file of container.envFiles || []) args.push('--env-file', file);
+    for (const value of container.env || []) args.push('--env', value);
+    for (const [key, value] of Object.entries(container.labels || {})) args.push('--label', `${key}=${value}`);
+    for (const mount of container.mounts || []) args.push('--mount', `type=bind,src=${mount.source},dst=${mount.target},readonly`);
+    if (container.user !== undefined) args.push('--user', container.user);
+    if (container.workdir !== undefined) args.push('--workdir', container.workdir);
+    if (container.readOnly) args.push('--read-only');
+    if (container.init) args.push('--init');
+    const entrypoint = container.entrypoint ?? (container.command?.length === 0 ? (definition.Config.Entrypoint || []) : undefined);
+    if (entrypoint !== undefined) args.push('--entrypoint', entrypoint[0] ?? '');
     args.push(image);
+    if (entrypoint !== undefined) args.push(...entrypoint.slice(1));
+    if (container.command !== undefined) args.push(...container.command);
     await this.run(args);
     if (!s.openStdin) await this.run(['container', 'start', s.name]);
   }

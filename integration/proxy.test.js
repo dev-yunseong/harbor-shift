@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 const exec = promisify(execFile);
 
-for (const mode of ['stdin', 'docker', 'http']) test(`bundled updater container: ${mode} shutdown, HTTP + WebSocket retention, unhealthy image`, { skip: process.env.HARBOR_DOCKER_TEST !== '1', timeout: 300000 }, async t => {
+for (const mode of ['stdin', 'docker', 'http', 'mixed', 'compose-pair']) test(`bundled updater container: ${mode} shutdown, HTTP + WebSocket retention, unhealthy image`, { skip: process.env.HARBOR_DOCKER_TEST !== '1', timeout: 300000 }, async t => {
   const group = `hs-proxy-${randomBytes(6).toString('hex')}`, manager = `${group}-manager`, appImage = `${group}:app`, toolImage = `${group}:tool`;
   const directory = await mkdtemp(join(tmpdir(), `${group}-`));
   const names = [manager, `${group}-blue`, `${group}-green`], images = new Set();
@@ -35,7 +35,58 @@ for (const mode of ['stdin', 'docker', 'http']) test(`bundled updater container:
       shutdown: { initiate: { type: 'stdin', data: 'drain\n', timeoutMs: 3000 }, completion: { type: 'proxy' }, onFailure: 'keep-old' },
       timing: { requestMs: 1000, readyMs: 4000, pollMs: 100, stabilizeMs: 300, drainMs: 45000, stopSeconds: 3, commandMs: 30000, watchMs: 1000 } };
     const configFile = join(directory, 'service.json'); await writeFile(configFile, JSON.stringify(config));
-    const source = mode === 'stdin'
+    let importedSource;
+    if (['mixed','compose-pair'].includes(mode)) {
+      const compose = color => `services:
+  web:
+    image: ${appImage}
+    environment:
+      SLOT: ${color}
+      APP_PORT: "${color==='blue'?8080:8081}"
+    ports: ["${color==='blue'?8080:8081}"]
+    mem_limit: 128m
+    cpus: 1
+    networks: [app]
+networks:
+  app:
+    external: true
+    name: ${group}
+`;
+      await writeFile(join(directory,'blue.yml'),compose('blue'));
+      await writeFile(join(directory,'green.yml'),compose('green'));
+      const blue = mode==='mixed' ? `dockerRun: docker run --network ${group} --memory 128m --cpus 1 -e SLOT=blue -e APP_PORT=8080 -p 8080:8080 ${appImage}` : 'composeFile: ./blue.yml\n      service: web';
+      await writeFile(join(directory,'harbor.yml'), `group: ${group}
+network: ${group}
+pullPolicy: never
+readinessPath: /ready
+slots:
+  blue:
+    source:
+      ${blue}
+  green:
+    source:
+      composeFile: ./green.yml
+      service: web
+shutdown:
+  mode: http
+  request:
+    path: /drain
+  completion:
+    type: http
+    path: /status
+    timeoutMs: 1000
+timing:
+  readyMs: 4000
+  pollMs: 100
+  stabilizeMs: 300
+  drainMs: 45000
+  stopSeconds: 3
+  commandMs: 30000
+  watchMs: 1000
+`);
+      importedSource=['-v',`${directory}:/config:ro`,toolImage,'/config/harbor.yml','--apply'];
+    }
+    const source = importedSource || (mode === 'stdin'
       ? ['-v', `${configFile}:/config/service.json:ro`, toolImage, '/config/service.json', '--apply']
       : [
         ...Object.entries({
@@ -46,7 +97,7 @@ for (const mode of ['stdin', 'docker', 'http']) test(`bundled updater container:
           HARBOR_WATCH_MS: '1000', HARBOR_SHUTDOWN_MODE: mode,
           ...(mode === 'http' ? { HARBOR_HTTP_PATH: '/drain', HARBOR_COMPLETION: 'http', HARBOR_HTTP_STATUS_PATH: '/status' } : {})
         }).flatMap(([key, value]) => ['-e', `${key}=${value}`]), toolImage, '--env', '--apply'
-      ];
+      ]);
     await docker(['run', '-d', '--name', manager, '--label', `harbor-shift.group=${group}`, '--network', group,
       '-p', '127.0.0.1::8080', '-v', '/var/run/docker.sock:/var/run/docker.sock', ...source]);
     const mapping = await docker(['port', manager, '8080/tcp']);
@@ -59,9 +110,11 @@ for (const mode of ['stdin', 'docker', 'http']) test(`bundled updater container:
     await build('v2');
     await until(async () => { try { return (await (await fetch(base)).json()).version === 'v2'; } catch { return false; } }, 'Automatic image detection did not switch proxy');
     assert.equal((await state('blue')).Running, true);
+    if (importedSource) assert.equal((await (await fetch(base)).json()).slot, 'green');
     assert.equal(await echo('after'), 'v1:after', 'Established WebSocket must remain on old image');
-    if (mode !== 'docker') await until(async () => (await docker(['logs', `${group}-blue`])).includes(`${mode}_drain_received`), 'Drain hook was not delivered');
+    if (mode !== 'docker') await until(async () => (await docker(['logs', `${group}-blue`])).includes(`${mode === 'stdin' ? 'stdin' : 'http'}_drain_received`), 'Drain hook was not delivered');
     const oldWork = await work; if (oldWork.error) throw oldWork.error; assert.equal(oldWork.value.version, 'v1');
+    if (importedSource) assert.equal(oldWork.value.slot,'blue');
     assert.equal((await state('blue')).Running, true, 'Open WebSocket must prevent premature termination');
     const closed = once(ws, 'close'); ws.close(); await closed;
     await until(async () => !(await state('blue')).Running, 'Old container did not retire after tunnel close');
