@@ -1,6 +1,6 @@
 # Configurable graceful shutdown
 
-Docker run and Compose can select Docker or HTTP shutdown without JSON. See the [environment settings](environment.md) and [README examples](../README.md#기존-작업이-끝날-때까지-기다리기). HTTP acknowledgement and process or work completion are separate; a successful request alone does not authorize immediate termination.
+Docker run and Compose can select Docker or HTTP shutdown without JSON. See the [environment settings](environment.md) and [README examples](graceful-shutdown.md). HTTP acknowledgement and process or work completion are separate; a successful request alone does not authorize immediate termination.
 
 Initiation, completion, and termination are separate:
 

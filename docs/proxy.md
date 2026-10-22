@@ -2,6 +2,10 @@
 
 The default Compose file configures the updater through environment variables and pulls the GHCR image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
 
+## Optional JSON configuration
+
+The default setup uses [environment variables](environment.md). The following schema is for explicit JSON configuration; see the [advanced guide](json-config.md).
+
 ```json
 {
   "enabled": true,
