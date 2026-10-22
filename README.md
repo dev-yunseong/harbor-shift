@@ -1,17 +1,50 @@
 <div align="center">
 
 # Harbor Shift
-**새 컨테이너는 새 요청을 받고, 기존 컨테이너는 처리 중인 작업을 마칩니다.**
 
-HTTP/WebSocket 프록시와 graceful shutdown을 제공하는 Docker blue-green 배포 도구입니다.
+HTTP/WebSocket 서비스를 위한 Docker blue-green 배포 도구입니다.
 
-[빠른 시작](#빠른-시작) · [서비스 설정](#내-서비스에-적용하기) · [종료 설정](#기존-작업이-끝날-때까지-기다리기) · [게임 서버 연동](#게임-서버와-로비에-연동하기)
+[동작 방식](#동작-방식) · [빠른 시작](#빠른-시작) · [서비스 설정](#내-서비스에-적용하기) · [종료 설정](#기존-작업이-끝날-때까지-기다리기) · [게임 서버 연동](#게임-서버와-로비에-연동하기)
 
 </div>
 
 Harbor Shift는 설정한 이미지 태그를 주기적으로 확인하고, 이미지가 바뀌면 새 컨테이너를 실행합니다. 준비 상태를 확인한 뒤 신규 요청을 새 컨테이너로 보내고, 기존 요청과 WebSocket 연결은 원래 컨테이너에서 마치도록 기다립니다.
 
 기본 모드는 프록시를 포함하므로 별도의 배포 controller를 구현할 필요가 없습니다. updater 하나가 서비스 하나의 blue/green 슬롯을 관리합니다.
+
+## 동작 방식
+
+아래는 blue에서 green으로 전환한 직후의 연결 상태입니다. 새 HTTP 요청과 새 WebSocket 연결은 green으로 보내고, 전환 전에 시작한 요청과 WebSocket 연결은 blue에서 유지합니다. 다음 배포에서는 두 슬롯의 역할이 바뀝니다.
+
+```mermaid
+flowchart LR
+    New["새 HTTP 요청 / 새 WebSocket 연결"] --> Proxy["Harbor Shift 프록시"]
+    Existing["전환 전 요청 / 기존 WebSocket 연결"] --> Proxy
+    Proxy -->|"신규 요청 전달"| Green["green: 새 버전"]
+    Proxy -.->|"이미 연결된 backend 유지"| Blue["blue: 기존 버전"]
+```
+
+HTTP keep-alive 연결을 재사용해도 다음 요청은 현재 활성 슬롯으로 보냅니다. 이미 수립된 WebSocket 연결은 종료될 때까지 같은 슬롯에 남습니다.
+
+이미지 변경을 감지하면 다음 순서로 배포합니다. 아래는 기존 슬롯이 실행 중인 경우이며, 최초 실행에서는 blue를 시작하고 readiness를 확인한 뒤 프록시를 엽니다.
+
+```mermaid
+flowchart TD
+    Poll["이미지 확인"] --> Changed{"이미지가 바뀌었나?"}
+    Changed -->|"아니요"| Wait["다음 확인 주기까지 대기"]
+    Changed -->|"예"| Start["비활성 슬롯에 새 버전 실행"]
+    Start --> Ready{"readiness 통과?"}
+    Ready -->|"실패"| Keep["새 슬롯 정지 / 기존 경로 유지"]
+    Ready -->|"성공"| Switch["신규 요청 경로 전환 및 상태 관찰"]
+    Switch --> Healthy{"전환과 상태 확인 성공?"}
+    Healthy -->|"실패 또는 결과 불확실"| Rollback["기존 경로 복구 및 새 슬롯 drain 시도"]
+    Healthy -->|"성공"| Drain["기존 슬롯 drain 시작"]
+    Drain --> Complete["기존 작업 완료 또는 drain 제한 시간까지 대기"]
+    Complete --> Stop["SIGTERM / 유예 시간 초과 시 SIGKILL"]
+    Stop --> Wait
+```
+
+그림은 주요 전환 경로를 보여줍니다. 기본 `keep-old` 정책에서 drain 시작 요청이나 완료 확인이 실패하면 기존 프로세스와 journal을 보존합니다. 배포 실패 시 프록시 모드는 업데이트를 멈추고 현재 경로로 계속 서비스합니다. rollback도 실패할 수 있으며, 기존 슬롯의 drain이 시작된 뒤에는 자동 rollback하지 않습니다. [실패 처리와 복구](docs/operations.md)
 
 ## 빠른 시작
 
@@ -110,6 +143,32 @@ CLI는 `--apply`가 없으면 실행 계획만 출력합니다. 제공된 Compos
 controller는 `GET /route`와 revision을 이용한 원자적 `PUT /route`를 제공해야 합니다. 각 슬롯은 기본적으로 `GET /ready`, `POST /drain`, `GET /status`를 제공하며, 상태 응답은 연결 수가 아니라 종료를 기다려야 할 전체 작업 수를 반영해야 합니다.
 
 새 서버는 준비가 끝나더라도 전환 전까지 신규 게임을 배정받으면 안 됩니다. 기존 경기와 재접속은 원래 슬롯으로 연결하고, drain 중인 슬롯은 새로운 경기 생성을 거부해야 합니다. 앱이 시작하자마자 자동으로 `ACTIVE` 등록되는 구조라면 별도의 연동 수정이 필요합니다.
+
+아래는 adapter를 구현한 서비스의 배포 예시입니다. Harbor Shift는 배정 대상을 전환하며, 경기 트래픽은 앱이 제공하는 슬롯별 접속 경로를 사용합니다.
+
+```mermaid
+sequenceDiagram
+    participant H as Harbor Shift
+    participant L as 로비 / 배정 controller
+    participant B as blue (기존 서버)
+    participant G as green (새 서버)
+    participant C as 클라이언트
+    H->>G: 새 슬롯 시작 및 GET /ready 확인
+    Note over G: 준비 완료, 신규 경기 배정은 아직 금지
+    H->>L: PUT /route (green, expectedRevision)
+    L-->>H: 모든 배정 경로에 전환 반영 후 응답
+    C->>L: 신규 경기 배정 요청
+    L-->>C: green 접속 정보
+    C->>G: 신규 경기 접속
+    Note over B,C: 기존 경기와 재접속은 blue 유지 (앱 구현)
+    H->>G: 전환 후 상태 관찰
+    H->>B: POST /drain
+    loop 작업 완료 또는 drain 제한 시간까지
+        H->>B: GET /status
+        B-->>H: draining / sessions
+    end
+    H->>B: 종료 (제한 시간 초과 시 경기 중단 가능)
+```
 
 이 모드는 최초 blue 슬롯을 수동으로 준비해야 하며, 실행 중인 슬롯이 하나도 없는 장애를 자동 복구하지 않습니다. 기본 포트 공개도 loopback으로 제한됩니다. 기존 배포 스크립트를 교체하기 전에 [adapter 계약과 초기 구성](docs/integration.md)을 확인하세요.
 
