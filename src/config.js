@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
+import { validateContainer } from './service-source.js';
 import { validateShutdown } from './shutdown.js';
 
 const id = /^[a-z][a-z0-9-]{0,47}$/;
@@ -25,7 +26,8 @@ export function validate(c) {
   keys(c.slots, ['blue', 'green'], 'slots');
   for (const color of ['blue', 'green']) {
     const s = c.slots[color];
-    keys(s, ['name', 'url', 'envFile', 'publish', 'memory', 'cpus', 'openStdin'], `slot ${color}`);
+    keys(s, ['name', 'url', 'envFile', 'publish', 'memory', 'cpus', 'openStdin', 'container'], `slot ${color}`);
+    validateContainer(s.container);
     if (s.openStdin !== undefined && typeof s.openStdin !== 'boolean') throw Error('openStdin must be boolean');
     if (!id.test(s.name || '')) throw Error('Invalid slot name');
     url(s.url);

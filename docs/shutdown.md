@@ -1,5 +1,7 @@
 # Configurable graceful shutdown
 
+YAML configuration can select Docker or HTTP shutdown. See the [YAML service sources](service-sources.md) and [README examples](graceful-shutdown.md). HTTP acknowledgement and process or work completion are separate; a successful request alone does not authorize immediate termination.
+
 Initiation, completion, and termination are separate:
 
 `ready candidate → switch new traffic → observe health → initiate old drain → wait completion → SIGTERM → bounded SIGKILL`

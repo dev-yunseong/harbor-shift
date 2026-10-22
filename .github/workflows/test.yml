@@ -13,6 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test
       - run: npm run demo
       - run: node src/cli.js plan examples/config.json
@@ -24,7 +25,39 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compose 설정 검증
+        run: docker compose config --quiet
       - name: Isolated Docker lifecycle
         env:
           HARBOR_DOCKER_TEST: '1'
         run: node --test --test-concurrency=1 integration/*.test.js
+  publish:
+    needs: [test, docker-integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: ghcr-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: GHCR 로그인
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: 이미지 빌드 및 게시
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.licenses=MIT" \
+            --tag "$image:sha-$GITHUB_SHA" \
+            --tag "$image:latest" .
+          docker push "$image:sha-$GITHUB_SHA"
+          docker push "$image:latest"

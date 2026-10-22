@@ -1,0 +1,10 @@
+group: harbor-web
+network: harbor-demo
+source:
+  dockerRun: docker run --network harbor-demo --memory 128m --cpus 1 -p 8080:80 traefik/whoami:v1.11
+readinessPath: /
+shutdown:
+  mode: docker
+timing:
+  drainMs: 3600000
+  stopSeconds: 120

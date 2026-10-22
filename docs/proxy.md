@@ -1,6 +1,10 @@
 # Bundled proxy mode
 
-The default Compose file builds one updater containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
+The default Compose file loads harbor.yml with docker run or Compose application definitions and pulls the GHCR image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
+
+## Optional JSON configuration
+
+The default setup uses [YAML service sources](service-sources.md). The following schema is for explicit JSON configuration; see the [advanced guide](json-config.md).
 
 ```json
 {
@@ -19,9 +23,9 @@ The default Compose file builds one updater containing the Docker CLI, an HTTP/1
 }
 ```
 
-The image supplies its command, entrypoint and user. Readiness requires exactly the configured status (default 200); redirects fail. Unknown config fields fail validation. The updater creates `<group>-blue/green` with ownership labels, resource caps, no-new-privileges, dropped capabilities, `restart=no`, and no host ports. Both slots and the updater must join the configured existing bridge network.
+The image supplies its command, entrypoint and user unless a supported source definition overrides them. Readiness requires exactly the configured status (default 200); redirects fail. Unknown config fields fail validation. The updater creates `<group>-blue/green` with ownership labels, resource caps, no-new-privileges, dropped capabilities, `restart=no`, and no host ports. Both slots and the updater must join the configured existing bridge network.
 
-Images declaring Docker volumes are rejected. Shared volumes, host networking, privileged mode, arbitrary Docker flags, command overrides, and Compose service cloning are unsupported. Use a stateless image and a non-root image USER.
+Images declaring Docker volumes are rejected. Shared volumes, host networking, privileged mode, arbitrary Docker flags, and arbitrary Docker flags are unsupported. Supported command overrides and selected Compose service imports are described in the source guide. Use a stateless image and a non-root image USER.
 
 | Additional option | Meaning |
 |---|---|
@@ -34,6 +38,8 @@ Images declaring Docker volumes are rejected. Shared volumes, host networking, p
 | `timing` | [Lifecycle deadlines](integration.md); partial overrides supported |
 
 Registry credentials are an operator responsibility. Mount an existing, dedicated Docker CLI configuration read-only when needed. No credentials are generated. The daemon must be able to pull the selected images.
+
+Environment configuration is documented in [환경변수 설정](environment.md). Use `--env --apply` for environment mode or an explicit JSON file argument for JSON mode; the two sources are not merged. Environment mode defaults to a one-hour drain and 120-second stop grace; JSON defaults remain unchanged.
 
 ## Lifecycle
 
@@ -48,7 +54,7 @@ Proxy counts do not prove that background jobs, queues, or writes after client c
 
 ## Stop and recovery
 
-Updater SIGTERM finishes the current bounded deployment, stops polling, then closes proxy connections. Restarting/upgrading the updater itself interrupts connections; there is no proxy HA or self-update. Set Compose stop grace longer than your lifecycle deadlines. The example uses seven minutes.
+Updater SIGTERM finishes the current bounded deployment, stops polling, then closes proxy connections. Restarting/upgrading the updater itself interrupts connections; there is no proxy HA or self-update. Set Compose stop grace longer than your lifecycle deadlines. The environment-based example uses 90 minutes to cover the default one-hour drain plus deployment and stop operations. Increase it when extending lifecycle deadlines.
 
 After a failed deployment, updates pause but the current route keeps serving. Inspect `updates_paused` logs; do not blindly restart. A pending transaction, stale hard-kill lock, missing state with existing slots, or inconsistent running slots blocks startup until [reconciliation](operations.md). Normal updater stops leave app slots running and route state persistent. A clean restart validates them before listening.
 
