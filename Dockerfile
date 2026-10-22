@@ -6,4 +6,4 @@ COPY package.json ./
 COPY src ./src
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["node", "src/proxy-cli.js"]
-CMD ["/config/service.json"]
+CMD ["--env"]

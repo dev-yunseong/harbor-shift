@@ -1,6 +1,6 @@
 # Bundled proxy mode
 
-The default Compose file pulls the GHCR updater image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
+The default Compose file configures the updater through environment variables and pulls the GHCR image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
 
 ```json
 {
@@ -35,6 +35,8 @@ Images declaring Docker volumes are rejected. Shared volumes, host networking, p
 
 Registry credentials are an operator responsibility. Mount an existing, dedicated Docker CLI configuration read-only when needed. No credentials are generated. The daemon must be able to pull the selected images.
 
+Environment configuration is documented in [환경변수 설정](environment.md). Use `--env --apply` for environment mode or an explicit JSON file argument for JSON mode; the two sources are not merged. Environment mode defaults to a one-hour drain and 120-second stop grace; JSON defaults remain unchanged.
+
 ## Lifecycle
 
 1. Hold one state-directory lock for the entire updater lifetime.
@@ -48,7 +50,7 @@ Proxy counts do not prove that background jobs, queues, or writes after client c
 
 ## Stop and recovery
 
-Updater SIGTERM finishes the current bounded deployment, stops polling, then closes proxy connections. Restarting/upgrading the updater itself interrupts connections; there is no proxy HA or self-update. Set Compose stop grace longer than your lifecycle deadlines. The example uses seven minutes.
+Updater SIGTERM finishes the current bounded deployment, stops polling, then closes proxy connections. Restarting/upgrading the updater itself interrupts connections; there is no proxy HA or self-update. Set Compose stop grace longer than your lifecycle deadlines. The environment-based example uses 90 minutes to cover the default one-hour drain plus deployment and stop operations. Increase it when extending lifecycle deadlines.
 
 After a failed deployment, updates pause but the current route keeps serving. Inspect `updates_paused` logs; do not blindly restart. A pending transaction, stale hard-kill lock, missing state with existing slots, or inconsistent running slots blocks startup until [reconciliation](operations.md). Normal updater stops leave app slots running and route state persistent. A clean restart validates them before listening.
 

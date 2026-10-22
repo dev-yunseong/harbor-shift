@@ -3,7 +3,10 @@ import { resolve, dirname } from 'node:path';
 import { validate } from './config.js';
 
 export async function loadProxyConfig(file) {
-  const raw = JSON.parse(await readFile(file, 'utf8'));
+  return validateProxyConfig(JSON.parse(await readFile(file, 'utf8')), dirname(file));
+}
+
+export function validateProxyConfig(raw, baseDir = process.cwd()) {
   const allowed = ['enabled', 'group', 'image', 'network', 'dockerContext', 'stateDir', 'appPort', 'listenPort', 'readinessPath', 'readinessStatus', 'envFile', 'memory', 'cpus', 'timing', 'proxyRequestMs', 'shutdown', 'openStdin', 'pullPolicy'];
   for (const field of Object.keys(raw)) if (!allowed.includes(field)) throw Error(`Unsupported proxy configuration field: ${field}`);
   if (raw.enabled !== true) throw Error('Proxy management requires explicit enabled: true');
@@ -19,10 +22,10 @@ export async function loadProxyConfig(file) {
     const name = `${raw.group}-${color}`;
     slots[color] = { name, url: `http://${name}:${raw.appPort}`, publish: [], memory: raw.memory, cpus: raw.cpus };
     if (raw.openStdin !== undefined) slots[color].openStdin = raw.openStdin;
-    if (raw.envFile) slots[color].envFile = resolve(dirname(file), raw.envFile);
+    if (raw.envFile) slots[color].envFile = resolve(baseDir, raw.envFile);
   }
   const c = validate({ group: raw.group, image: raw.image, network: raw.network, dockerContext: raw.dockerContext || 'default',
-    stateDir: resolve(dirname(file), raw.stateDir), controller: 'http://localhost', tokenEnv: 'UNUSED', allowHttp: true, slots,
+    stateDir: resolve(baseDir, raw.stateDir), controller: 'http://localhost', tokenEnv: 'UNUSED', allowHttp: true, slots,
     timing: { requestMs: 2000, readyMs: 60000, pollMs: 500, stabilizeMs: 5000, drainMs: 300000, stopSeconds: 30, commandMs: 120000, watchMs: 60000, ...raw.timing },
     ...(raw.shutdown ? { shutdown: raw.shutdown } : {}), ...(raw.pullPolicy ? { pullPolicy: raw.pullPolicy } : {}) });
   return { ...c, readinessPath: raw.readinessPath, readinessStatus: status, listenPort: raw.listenPort, proxyRequestMs: requestMs };

@@ -4,7 +4,7 @@
 
 HTTP/WebSocket 서비스를 위한 Docker blue-green 배포 도구입니다.
 
-[동작 방식](#동작-방식) · [빠른 시작](#빠른-시작) · [서비스 설정](#내-서비스에-적용하기) · [종료 설정](#기존-작업이-끝날-때까지-기다리기) · [게임 서버 연동](#게임-서버와-로비에-연동하기)
+[동작 방식](#동작-방식) · [빠른 시작](#빠른-시작) · [환경변수](docs/environment.md) · [종료 설정](#기존-작업이-끝날-때까지-기다리기) · [게임 서버 연동](#게임-서버와-로비에-연동하기)
 
 </div>
 
@@ -48,35 +48,15 @@ flowchart TD
 
 ## 빠른 시작
 
-Linux Docker Engine (`linux/amd64`)이 필요합니다. 저장소를 clone하거나 로컬에서 빌드하지 않고 `ghcr.io/dev-yunseong/harbor-shift:latest`를 pull해서 실행합니다. Docker Compose를 사용할 경우 Compose plugin도 설치하세요.
+Linux Docker Engine (`linux/amd64`)이 필요합니다. 저장소나 JSON 파일 없이 GHCR 이미지를 받아 실행할 수 있습니다. Docker Compose를 사용할 경우 Compose plugin도 설치하세요.
 
-`main`에 push하면 CI의 단위 테스트와 Docker 통합 테스트를 통과한 뒤 GHCR에 `latest`와 `sha-<전체 commit SHA>` 태그를 게시합니다. 운영에서는 검증한 SHA 태그 또는 digest로 고정할 수 있습니다. 최초 실행 전 [CI](https://github.com/dev-yunseong/harbor-shift/actions/workflows/test.yml)의 게시 완료를 확인하세요. GHCR 패키지가 private이면 pull 전에 읽기 권한이 있는 계정으로 로그인해야 하며, 익명 pull을 제공하려면 관리자가 패키지를 public으로 설정해야 합니다.
+`main`에 push하면 CI 테스트를 통과한 뒤 `ghcr.io/dev-yunseong/harbor-shift`에 `latest`와 `sha-<전체 commit SHA>` 태그를 게시합니다. 운영에서는 검증한 SHA 태그 또는 digest로 고정할 수 있습니다. [CI](https://github.com/dev-yunseong/harbor-shift/actions/workflows/test.yml)의 게시 완료를 확인하세요. private 패키지는 읽기 권한으로 로그인해야 하며, 익명 pull을 제공하려면 관리자가 패키지를 public으로 설정해야 합니다.
 
-### 1. 설정 파일 만들기
+아래 두 방법 중 하나만 선택하세요. 같은 서비스에 updater를 두 개 실행하면 안 됩니다. 예제 앱은 `traefik/whoami:v1.11`이며, 명령은 Linux shell 기준입니다.
 
-빈 작업 폴더에서 아래 내용을 `service.json`으로 저장하세요. 예제는 `traefik/whoami:v1.11`을 실행합니다. 실제 서비스에 적용하려면 시작 전에 `image`, `appPort`, `readinessPath`를 수정하세요.
+### docker run으로 실행하기
 
-```json
-{
-  "enabled": true,
-  "group": "harbor-web",
-  "image": "traefik/whoami:v1.11",
-  "network": "harbor-demo",
-  "stateDir": "/state",
-  "appPort": 80,
-  "listenPort": 8080,
-  "readinessPath": "/",
-  "memory": "128m",
-  "cpus": 1,
-  "timing": { "watchMs": 60000, "drainMs": 300000 }
-}
-```
-
-아래 두 방법 중 하나만 선택하세요. 같은 서비스에 updater를 두 개 실행하면 안 됩니다. 명령은 Linux shell 기준입니다.
-
-### 2-A. docker run으로 실행하기
-
-처음 한 번 네트워크와 상태 저장 volume을 만들고 이미지를 받습니다. 이미 같은 이름의 리소스가 있으면 용도를 확인한 뒤 재사용하세요.
+처음 한 번 네트워크와 상태 저장 volume을 만드세요. 이미 같은 이름의 리소스가 있으면 용도를 확인한 뒤 재사용하세요.
 
 ```sh
 docker network create harbor-demo
@@ -87,34 +67,50 @@ docker run -d \
   --name harbor-shift \
   --network harbor-demo \
   --restart=no \
-  --stop-timeout 420 \
+  --stop-timeout 5400 \
   -p 127.0.0.1:8080:8080 \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
-  --mount "type=bind,src=$(pwd)/service.json,dst=/config/service.json,readonly" \
   --mount type=volume,src=harbor-state,dst=/state \
-  ghcr.io/dev-yunseong/harbor-shift:latest \
-  /config/service.json --apply
+  -e HARBOR_ENABLED=true \
+  -e HARBOR_GROUP=harbor-web \
+  -e HARBOR_IMAGE=traefik/whoami:v1.11 \
+  -e HARBOR_NETWORK=harbor-demo \
+  -e HARBOR_APP_PORT=80 \
+  -e HARBOR_READINESS_PATH=/ \
+  -e HARBOR_SHUTDOWN_MODE=docker \
+  -e HARBOR_DRAIN_MS=3600000 \
+  -e HARBOR_STOP_SECONDS=120 \
+  ghcr.io/dev-yunseong/harbor-shift:latest --env --apply
 
 docker logs -f harbor-shift
 ```
 
-### 2-B. Docker Compose로 실행하기
+### Docker Compose로 실행하기
 
-`service.json`과 같은 폴더에 아래 내용을 `compose.yaml`로 저장하세요. Compose가 네트워크와 상태 저장 volume을 생성합니다.
+아래 내용을 `compose.yaml`로 저장하세요. Compose가 네트워크와 상태 저장 volume을 생성합니다.
 
 ```yaml
 services:
   harbor-shift:
     image: ghcr.io/dev-yunseong/harbor-shift:latest
-    command: ["/config/service.json", "--apply"]
+    command: ["--env", "--apply"]
+    environment:
+      HARBOR_ENABLED: "true"
+      HARBOR_GROUP: harbor-web
+      HARBOR_IMAGE: traefik/whoami:v1.11
+      HARBOR_NETWORK: harbor-demo
+      HARBOR_APP_PORT: "80"
+      HARBOR_READINESS_PATH: /
+      HARBOR_SHUTDOWN_MODE: docker
+      HARBOR_DRAIN_MS: "3600000"
+      HARBOR_STOP_SECONDS: "120"
     ports: ["127.0.0.1:8080:8080"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./service.json:/config/service.json:ro
       - harbor-state:/state
     networks: [harbor]
     restart: "no"
-    stop_grace_period: 7m
+    stop_grace_period: 90m
 networks:
   harbor:
     name: harbor-demo
@@ -128,21 +124,19 @@ docker compose up -d
 docker compose logs -f harbor-shift
 ```
 
-### 3. 접속 확인하기
+### 접속 확인과 내 서비스 설정
 
-다른 터미널에서 실행하세요.
+다른 터미널에서 `curl http://localhost:8080`을 실행하세요. 앱 컨테이너 정보가 나오면 프록시를 통해 접속한 것입니다. 외부에 서비스하려면 앞단에 TLS를 처리하는 reverse proxy를 두세요.
 
-```sh
-curl http://localhost:8080
-```
+실제 서비스는 처음 실행하기 전에 `HARBOR_IMAGE`, `HARBOR_APP_PORT`, `HARBOR_READINESS_PATH`를 바꾸면 됩니다. 대상 앱의 환경변수는 `HARBOR_APP_ENV_FILE`에 updater 내부의 파일 경로를 지정하고 그 파일을 read-only mount해서 전달할 수 있습니다. updater 환경변수 전체를 앱에 복사하지 않습니다.
 
-응답에 앱 컨테이너 정보가 나오면 프록시를 통해 접속한 것입니다. 호스트의 `127.0.0.1:8080`만 공개하므로 외부에 서비스하려면 앞단에 TLS를 처리하는 reverse proxy를 두세요.
+위 명령의 이미지 인자는 Harbor Shift 자체이고, `HARBOR_IMAGE`는 교체할 앱 이미지입니다. updater가 앱 슬롯을 생성하므로 같은 앱을 별도 Compose 서비스나 Watchtower로 함께 관리하지 마세요. 임의의 `docker run` 문자열이나 기존 Compose 서비스를 자동으로 가져오는 기능은 아닙니다.
 
-updater는 앱 컨테이너를 직접 생성합니다. 같은 앱을 별도 Compose 서비스로 띄우거나 Watchtower로 함께 관리하지 마세요. 상태 volume은 재시작 후에도 보존해야 합니다. drain 시간을 늘릴 때는 updater의 종료 유예 시간(`--stop-timeout` / `stop_grace_period`)도 배포가 끝날 만큼 충분히 늘리세요.
+설정은 `--env` 또는 JSON 파일 중 하나를 선택하며 섞어서 덮어쓰지 않습니다. `--apply`를 빼면 설정 검증만 수행합니다. [전체 환경변수](docs/environment.md)
 
-## 내 서비스에 적용하기
+## JSON 파일로 설정하기
 
-**처음 시작하기 전에** 앞에서 만든 `service.json`을 서비스에 맞게 수정하세요. 예제를 이미 실행했다면 기존 슬롯과 상태를 먼저 정리해야 합니다. [종료와 복구 절차](docs/proxy.md#stop-and-recovery)를 참고하세요.
+복잡한 hook이나 기존 설정을 유지하려면 아래 내용을 `service.json`으로 저장해서 사용할 수 있습니다. 예제를 이미 실행했다면 기존 슬롯과 상태를 먼저 정리해야 합니다. [종료와 복구 절차](docs/proxy.md#stop-and-recovery)를 참고하세요.
 
 아래 `image`는 설명용 주소입니다. 실제로 pull할 수 있는 이미지로 바꿔야 합니다.
 
@@ -177,7 +171,7 @@ updater는 앱 컨테이너를 직접 생성합니다. 같은 앱을 별도 Comp
 | `drainMs` | 기존 작업 종료를 기다릴 최대 시간입니다. 예시는 5분입니다. |
 | `stopSeconds` | 종료 시 SIGTERM 이후 SIGKILL까지의 유예 시간입니다. 예시는 30초입니다. |
 
-설정을 저장하고 위에서 선택한 실행 명령을 실행하면 됩니다. 이후에는 같은 이미지 태그를 갱신하면 updater가 변경을 감지합니다. 설정 파일의 실시간 재로딩은 지원하지 않습니다.
+파일을 `/config/service.json`으로 read-only mount하고 실행 인자를 `/config/service.json --apply`로 지정하세요. Compose에서는 `command: ["/config/service.json", "--apply"]`로 바꿉니다. 이 모드에서는 `HARBOR_*` 설정을 읽지 않습니다. 이후에는 같은 이미지 태그를 갱신하면 updater가 변경을 감지합니다. 설정 파일의 실시간 재로딩은 지원하지 않습니다.
 
 앱 환경변수는 `envFile`로 지정할 수 있습니다. 해당 파일은 updater 내부에서 읽을 수 있도록 별도로 read-only mount해야 합니다. 비공개 registry는 전용 Docker CLI 인증 설정을 read-only mount하는 등 별도의 인증 구성이 필요합니다. 비밀값은 JSON이나 저장소에 넣지 마세요. [전체 설정 설명](docs/proxy.md)
 
@@ -194,6 +188,45 @@ CLI는 `--apply`가 없으면 실행 계획만 출력합니다. 제공된 Compos
 ## 기존 작업이 끝날 때까지 기다리기
 
 기본 순서는 **새 슬롯 실행 → readiness 확인 → 신규 요청 전환 → 상태 관찰 → 기존 슬롯 drain → 완료 대기 → 종료**입니다. 기존 WebSocket을 새 컨테이너로 옮기지는 않습니다.
+
+종료 방식은 환경변수로 선택할 수 있습니다. 대기 시간은 고정 sleep이 아니라 **완료 여부를 반복 확인하는 최대 시간**입니다. 빨리 끝나면 곧바로 다음 단계로 진행합니다.
+
+| 설정 | 동작 |
+|---|---|
+| `HARBOR_SHUTDOWN_MODE=docker` | 기존 프록시 요청과 WebSocket이 끝나기를 기다린 뒤 Docker로 SIGTERM을 보냅니다. |
+| `HARBOR_SHUTDOWN_MODE=http` | REST API로 graceful shutdown을 요청하고, 기본적으로 앱 프로세스가 스스로 종료할 때까지 기다립니다. |
+| `HARBOR_DRAIN_MS=3600000` | 작업 완료 또는 프로세스 종료를 최대 1시간 기다립니다. |
+| `HARBOR_STOP_SECONDS=120` | Docker 종료 시 SIGTERM 이후 최대 2분 기다린 뒤 SIGKILL을 보냅니다. |
+
+위 값은 환경변수 모드의 기본값입니다. 기존 JSON 모드의 기본값(5분 / 30초)은 유지됩니다. 앱이 SIGTERM을 처리하거나 REST 요청을 받아 실제로 작업을 마무리하도록 구현되어 있어야 합니다.
+
+REST 방식은 Compose의 `environment`를 다음처럼 설정합니다. `docker run`에서는 같은 값을 `-e 이름=값`으로 전달하세요.
+
+```yaml
+HARBOR_SHUTDOWN_MODE: http
+HARBOR_HTTP_PATH: /admin/shutdown
+HARBOR_HTTP_METHOD: POST
+HARBOR_COMPLETION: exit
+HARBOR_DRAIN_MS: "3600000"
+HARBOR_STOP_SECONDS: "120"
+```
+
+위 API는 요청을 받은 뒤 2xx로 응답하고, 기존 작업을 마친 뒤 프로세스를 종료하는 앱을 가정합니다. **2xx 응답만으로 종료 완료로 판단하지 않습니다.** API가 신규 작업만 막고 프로세스는 계속 실행한다면 다음처럼 상태 API로 완료를 확인하세요.
+
+```yaml
+HARBOR_SHUTDOWN_MODE: http
+HARBOR_HTTP_PATH: /admin/drain
+HARBOR_COMPLETION: http
+HARBOR_HTTP_STATUS_PATH: /admin/status
+```
+
+상태 API는 `{"draining":true,"sessions":0}` 형태로 응답해야 합니다. 앱 작업 수와 기존 프록시 연결 수가 모두 0일 때 SIGTERM을 보냅니다. 관리 API가 별도 포트에 있다면 `HARBOR_HTTP_URL: "http://{slot}:9090"`을 추가하세요. Authorization이 필요하면 updater의 `HARBOR_HTTP_AUTHORIZATION`에 전체 헤더 값(`Bearer ...`)을 비밀 환경변수로 주입하세요. 값은 설정 파일이나 저장소에 적지 마세요.
+
+REST 요청 실패 시 기본 `HARBOR_ON_FAILURE=keep-old`는 기존 컨테이너를 보존하고 업데이트를 멈춥니다. 정상 요청 후 완료 대기 시간이 초과되면 Docker 종료로 넘어가므로, 경기나 작업의 실제 최대 시간에 맞게 늘리세요. Docker 방식의 연결 수만으로는 백그라운드 작업 완료를 알 수 없습니다. 이런 앱은 REST 상태 확인을 쓰거나 SIGTERM 이후 충분한 유예 시간을 설정해야 합니다.
+
+updater 자체가 먼저 강제 종료되지 않도록 예제는 `--stop-timeout 5400` / `stop_grace_period: 90m`을 사용합니다. 이 값은 앱의 2분 종료 유예와 다른 설정입니다. 작업 대기 시간을 늘리면 updater의 종료 유예도 전체 배포 시간을 감당하도록 늘려야 합니다.
+
+### JSON hook 설정
 
 종료 hook이 없으면 프록시가 기존 HTTP 요청과 WebSocket 연결이 끝나기를 기다린 뒤 SIGTERM을 보냅니다. 앱이 신규 작업 수신을 중단하거나 별도의 정리를 해야 한다면 `service.json`에 `shutdown`을 추가하세요.
 

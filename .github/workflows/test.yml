@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Compose 설정 검증
+        run: docker compose config --quiet
       - name: Isolated Docker lifecycle
         env:
           HARBOR_DOCKER_TEST: '1'

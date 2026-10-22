@@ -2,16 +2,21 @@
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 const version = process.env.VERSION || 'v1';
-let draining = false;
+let draining = false, work = 0;
+const tunnels = new Set();
 const server = createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/ready') { res.writeHead(draining || version === 'unhealthy' ? 503 : 200); res.end(); return; }
+  if (url.pathname === '/drain' && req.method === 'POST') { draining = true; console.log('http_drain_received'); res.writeHead(202); res.end(); return; }
+  if (url.pathname === '/status') { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ draining, sessions: work + tunnels.size })); return; }
   const ms = Number(url.searchParams.get('ms') || 0);
   if (draining || !Number.isSafeInteger(ms) || ms < 0 || ms > 60000) { res.writeHead(503); res.end(); return; }
-  setTimeout(() => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ version })); }, ms);
+  work++;
+  setTimeout(() => { work--; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ version })); }, ms);
 });
 server.on('upgrade', (req, socket) => {
   if (draining || req.headers.upgrade?.toLowerCase() !== 'websocket') { socket.destroy(); return; }
+  tunnels.add(socket); socket.on('close', () => tunnels.delete(socket));
   const accept = createHash('sha1').update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   let buffer = Buffer.alloc(0);
