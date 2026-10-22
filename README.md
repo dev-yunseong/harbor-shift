@@ -48,23 +48,101 @@ flowchart TD
 
 ## 빠른 시작
 
-Linux Docker Engine과 Docker Compose가 필요합니다. 아래 명령은 예제 웹 서비스를 실행하며, 이미지나 패키지를 외부에 게시하지 않습니다.
+Linux Docker Engine (`linux/amd64`)이 필요합니다. 저장소를 clone하거나 로컬에서 빌드하지 않고 `ghcr.io/dev-yunseong/harbor-shift:latest`를 pull해서 실행합니다. Docker Compose를 사용할 경우 Compose plugin도 설치하세요.
+
+`main`에 push하면 CI의 단위 테스트와 Docker 통합 테스트를 통과한 뒤 GHCR에 `latest`와 `sha-<전체 commit SHA>` 태그를 게시합니다. 운영에서는 검증한 SHA 태그 또는 digest로 고정할 수 있습니다. 최초 실행 전 [CI](https://github.com/dev-yunseong/harbor-shift/actions/workflows/test.yml)의 게시 완료를 확인하세요. GHCR 패키지가 private이면 pull 전에 읽기 권한이 있는 계정으로 로그인해야 하며, 익명 pull을 제공하려면 관리자가 패키지를 public으로 설정해야 합니다.
+
+### 1. 설정 파일 만들기
+
+빈 작업 폴더에서 아래 내용을 `service.json`으로 저장하세요. 예제는 `traefik/whoami:v1.11`을 실행합니다. 실제 서비스에 적용하려면 시작 전에 `image`, `appPort`, `readinessPath`를 수정하세요.
+
+```json
+{
+  "enabled": true,
+  "group": "harbor-web",
+  "image": "traefik/whoami:v1.11",
+  "network": "harbor-demo",
+  "stateDir": "/state",
+  "appPort": 80,
+  "listenPort": 8080,
+  "readinessPath": "/",
+  "memory": "128m",
+  "cpus": 1,
+  "timing": { "watchMs": 60000, "drainMs": 300000 }
+}
+```
+
+아래 두 방법 중 하나만 선택하세요. 같은 서비스에 updater를 두 개 실행하면 안 됩니다. 명령은 Linux shell 기준입니다.
+
+### 2-A. docker run으로 실행하기
+
+처음 한 번 네트워크와 상태 저장 volume을 만들고 이미지를 받습니다. 이미 같은 이름의 리소스가 있으면 용도를 확인한 뒤 재사용하세요.
 
 ```sh
-git clone https://github.com/dev-yunseong/harbor-shift.git
-cd harbor-shift
-docker compose up --build -d
-curl http://localhost:8080
+docker network create harbor-demo
+docker volume create harbor-state
+docker pull ghcr.io/dev-yunseong/harbor-shift:latest
+
+docker run -d \
+  --name harbor-shift \
+  --network harbor-demo \
+  --restart=no \
+  --stop-timeout 420 \
+  -p 127.0.0.1:8080:8080 \
+  --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
+  --mount "type=bind,src=$(pwd)/service.json,dst=/config/service.json,readonly" \
+  --mount type=volume,src=harbor-state,dst=/state \
+  ghcr.io/dev-yunseong/harbor-shift:latest \
+  /config/service.json --apply
+
+docker logs -f harbor-shift
+```
+
+### 2-B. Docker Compose로 실행하기
+
+`service.json`과 같은 폴더에 아래 내용을 `compose.yaml`로 저장하세요. Compose가 네트워크와 상태 저장 volume을 생성합니다.
+
+```yaml
+services:
+  harbor-shift:
+    image: ghcr.io/dev-yunseong/harbor-shift:latest
+    command: ["/config/service.json", "--apply"]
+    ports: ["127.0.0.1:8080:8080"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./service.json:/config/service.json:ro
+      - harbor-state:/state
+    networks: [harbor]
+    restart: "no"
+    stop_grace_period: 7m
+networks:
+  harbor:
+    name: harbor-demo
+volumes:
+  harbor-state:
+```
+
+```sh
+docker compose pull
+docker compose up -d
 docker compose logs -f harbor-shift
 ```
 
-기본 예제는 `traefik/whoami:v1.11`을 사용합니다. 응답에 컨테이너 정보가 나오면 프록시를 통해 접속한 것입니다. 호스트의 `127.0.0.1:8080`만 공개하므로 외부에 서비스하려면 앞단에 TLS를 처리하는 reverse proxy를 두세요.
+### 3. 접속 확인하기
 
-updater는 앱 컨테이너를 직접 생성합니다. 같은 앱을 별도 Compose 서비스로 띄우거나 Watchtower로 함께 관리하지 마세요.
+다른 터미널에서 실행하세요.
+
+```sh
+curl http://localhost:8080
+```
+
+응답에 앱 컨테이너 정보가 나오면 프록시를 통해 접속한 것입니다. 호스트의 `127.0.0.1:8080`만 공개하므로 외부에 서비스하려면 앞단에 TLS를 처리하는 reverse proxy를 두세요.
+
+updater는 앱 컨테이너를 직접 생성합니다. 같은 앱을 별도 Compose 서비스로 띄우거나 Watchtower로 함께 관리하지 마세요. 상태 volume은 재시작 후에도 보존해야 합니다. drain 시간을 늘릴 때는 updater의 종료 유예 시간(`--stop-timeout` / `stop_grace_period`)도 배포가 끝날 만큼 충분히 늘리세요.
 
 ## 내 서비스에 적용하기
 
-**처음 시작하기 전에** [`examples/proxy/service.json`](examples/proxy/service.json)을 서비스에 맞게 수정하세요. 예제를 이미 실행했다면 기존 슬롯과 상태를 먼저 정리해야 합니다. [종료와 복구 절차](docs/proxy.md#stop-and-recovery)를 참고하세요.
+**처음 시작하기 전에** 앞에서 만든 `service.json`을 서비스에 맞게 수정하세요. 예제를 이미 실행했다면 기존 슬롯과 상태를 먼저 정리해야 합니다. [종료와 복구 절차](docs/proxy.md#stop-and-recovery)를 참고하세요.
 
 아래 `image`는 설명용 주소입니다. 실제로 pull할 수 있는 이미지로 바꿔야 합니다.
 
@@ -99,14 +177,16 @@ updater는 앱 컨테이너를 직접 생성합니다. 같은 앱을 별도 Comp
 | `drainMs` | 기존 작업 종료를 기다릴 최대 시간입니다. 예시는 5분입니다. |
 | `stopSeconds` | 종료 시 SIGTERM 이후 SIGKILL까지의 유예 시간입니다. 예시는 30초입니다. |
 
-설정을 저장하고 빠른 시작의 Compose 명령을 실행하면 됩니다. 이후에는 같은 이미지 태그를 갱신하면 updater가 변경을 감지합니다. 설정 파일의 실시간 재로딩은 지원하지 않습니다.
+설정을 저장하고 위에서 선택한 실행 명령을 실행하면 됩니다. 이후에는 같은 이미지 태그를 갱신하면 updater가 변경을 감지합니다. 설정 파일의 실시간 재로딩은 지원하지 않습니다.
 
 앱 환경변수는 `envFile`로 지정할 수 있습니다. 해당 파일은 updater 내부에서 읽을 수 있도록 별도로 read-only mount해야 합니다. 비공개 registry는 전용 Docker CLI 인증 설정을 read-only mount하는 등 별도의 인증 구성이 필요합니다. 비밀값은 JSON이나 저장소에 넣지 마세요. [전체 설정 설명](docs/proxy.md)
 
-Node.js 24 이상이 설치되어 있으면 컨테이너를 변경하지 않고 설정을 검사할 수 있습니다. 이 검사는 실제 이미지 접근이나 서비스 동작을 검증하지 않습니다.
+앱 컨테이너를 변경하지 않고 설정만 검사하려면 `--apply` 없이 실행하세요. 이 검사는 실제 이미지 접근이나 서비스 동작을 검증하지 않습니다. Docker socket이나 상태 volume을 연결할 필요도 없습니다.
 
 ```sh
-node src/proxy-cli.js examples/proxy/service.json
+docker run --rm \
+  --mount "type=bind,src=$(pwd)/service.json,dst=/config/service.json,readonly" \
+  ghcr.io/dev-yunseong/harbor-shift:latest /config/service.json
 ```
 
 CLI는 `--apply`가 없으면 실행 계획만 출력합니다. 제공된 Compose 파일에는 `--apply`가 지정되어 있어 실제 배포가 실행됩니다.

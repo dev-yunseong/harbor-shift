@@ -1,6 +1,6 @@
 # Bundled proxy mode
 
-The default Compose file builds one updater containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
+The default Compose file pulls the GHCR updater image containing the Docker CLI, an HTTP/1.1 reverse proxy, WebSocket tunneling, and polling. No management API is exposed. One config explicitly opts in one service; the tool never discovers and adopts arbitrary labeled containers.
 
 ```json
 {

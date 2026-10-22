@@ -1,6 +1,6 @@
 services:
   harbor-shift:
-    build: .
+    image: ghcr.io/dev-yunseong/harbor-shift:latest
     command: ["/config/service.json", "--apply"]
     ports: ["127.0.0.1:8080:8080"]
     volumes:
